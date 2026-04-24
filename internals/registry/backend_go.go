@@ -1,6 +1,10 @@
 package registry
 
-import "openblueprints/internals/core"
+import (
+	"path/filepath"
+
+	"openblueprints/internals/core"
+)
 
 func registerBackendGo(r *Registry) {
 	r.RegisterEntry(EntryDefinition{
@@ -34,11 +38,11 @@ func registerBackendGo(r *Registry) {
 						},
 					},
 					{
-						ID:      "go-backend-starter",
+						ID:      "go-backend-files",
 						OwnerID: "go-api",
-						Phase:   core.PhasePostSetup,
+						Phase:   core.PhaseIntegration,
 						Actions: []core.ExecutionAction{
-							noteAction("go-note", "Apply Go API starter files", "MVP leaves the actual Go HTTP starter source as a follow-up patch step.", ""),
+							writeFileAction("go-main", "Write Go API entrypoint", "Adds the initial Go HTTP server entrypoint.", filepath.Join(backendDir(selection), "main.go"), goMainSource()),
 						},
 					},
 				}
@@ -46,4 +50,29 @@ func registerBackendGo(r *Registry) {
 		},
 		Properties: map[string]string{"kind": "pack"},
 	})
+}
+
+func goMainSource() string {
+	return `package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+)
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3001"
+	}
+
+	http.HandleFunc("/health", func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte("{\"status\":\"ok\"}"))
+	})
+
+	log.Printf("go api listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
+}`
 }

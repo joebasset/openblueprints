@@ -48,42 +48,51 @@ func (s Service) Build(selection core.TemplateSelection) (core.TemplatePlan, err
 	for _, fragment := range fragments {
 		actions = append(actions, fragment.Actions...)
 	}
+	if shouldInstallAgentSkills(selection) {
+		fragment := agentSkillsFragment(selection, entries)
+		if len(fragment.Actions) > 0 {
+			fragments = append(fragments, fragment)
+			actions = append(actions, fragment.Actions...)
+		}
+	}
 
 	return core.TemplatePlan{
 		Selection: selection,
 		Fragments: fragments,
-		Actions:   actions,
+		Actions:   mergeEnvWriteActions(actions),
 	}, nil
 }
 
 func (s Service) Format(plan core.TemplatePlan) string {
 	var b strings.Builder
 	b.WriteString("Resolved template\n")
+	b.WriteString("-----------------\n")
 	for _, line := range plan.Selection.SummaryLines() {
-		b.WriteString("- ")
-		b.WriteString(line)
-		b.WriteString("\n")
-	}
-
-	b.WriteString("\nPlan fragments\n")
-	for i, fragment := range plan.Fragments {
-		b.WriteString(fmt.Sprintf("%d. [%s] %s\n", i+1, fragment.Phase, fragment.OwnerID))
-		for _, action := range fragment.Actions {
-			b.WriteString("   - ")
-			b.WriteString(action.Name)
+		label, value, found := strings.Cut(line, ": ")
+		if !found {
+			b.WriteString(line)
 			b.WriteString("\n")
-			if action.Description != "" {
-				b.WriteString("     ")
-				b.WriteString(action.Description)
-				b.WriteString("\n")
-			}
-			b.WriteString("     ")
-			b.WriteString(renderAction(action))
-			b.WriteString("\n")
+			continue
 		}
+		b.WriteString(fmt.Sprintf("%-16s %s\n", summaryLabel(label), value))
 	}
 
 	return b.String()
+}
+
+func summaryLabel(label string) string {
+	if label == "orm" {
+		return "ORM"
+	}
+
+	words := strings.Fields(strings.ReplaceAll(label, "-", " "))
+	for index, word := range words {
+		if word == "" {
+			continue
+		}
+		words[index] = strings.ToUpper(word[:1]) + word[1:]
+	}
+	return strings.Join(words, " ")
 }
 
 func (s Service) Execute(ctx context.Context, plan core.TemplatePlan, stdout, stderr io.Writer) error {
@@ -112,6 +121,15 @@ func (s Service) Execute(ctx context.Context, plan core.TemplatePlan, stdout, st
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("run %s: %w", action.Name, err)
 			}
+		case core.ActionKindWriteFile, core.ActionKindWriteEnv:
+			target := filepath.Join(baseDir, action.Path)
+			parentDir := filepath.Dir(target)
+			if err := os.MkdirAll(parentDir, 0o755); err != nil {
+				return fmt.Errorf("create parent directory for %s: %w", action.Name, err)
+			}
+			if err := os.WriteFile(target, []byte(action.Content), 0o644); err != nil {
+				return fmt.Errorf("write %s: %w", action.Name, err)
+			}
 		case core.ActionKindNote:
 			fmt.Fprintf(stdout, "   note: %s\n", action.Description)
 		default:
@@ -120,6 +138,112 @@ func (s Service) Execute(ctx context.Context, plan core.TemplatePlan, stdout, st
 	}
 
 	return nil
+}
+
+func shouldInstallAgentSkills(selection core.TemplateSelection) bool {
+	for _, value := range selection.Multi(core.GroupFinalization) {
+		if value == "install-agent-skills" {
+			return true
+		}
+	}
+	return false
+}
+
+func agentSkillsFragment(selection core.TemplateSelection, entries []registry.EntryDefinition) core.PlanFragment {
+	sources := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, entry := range entries {
+		for _, source := range entrySkillSources(entry) {
+			if _, ok := seen[source]; ok {
+				continue
+			}
+			seen[source] = struct{}{}
+			sources = append(sources, source)
+		}
+	}
+	slices.Sort(sources)
+
+	actions := make([]core.ExecutionAction, 0, len(sources))
+	for _, source := range sources {
+		actions = append(actions, core.ExecutionAction{
+			ID:          "install-skill-" + skillSourceSlug(source),
+			Name:        "Install agent skills",
+			Description: "Installs project-local agent skills for " + source + ".",
+			Kind:        core.ActionKindCommand,
+			Dir:         selection.ProjectName,
+			Command:     "npx",
+			Args:        []string{"skills", "add", source, "--agent", "codex", "--yes"},
+		})
+	}
+
+	return core.PlanFragment{
+		ID:      "agent-skills-finalization",
+		OwnerID: "install-agent-skills",
+		Phase:   core.PhasePostSetup,
+		Actions: actions,
+	}
+}
+
+func entrySkillSources(entry registry.EntryDefinition) []string {
+	sources := make([]string, 0, 2)
+	if source := strings.TrimSpace(entry.Properties["skillSource"]); source != "" {
+		sources = append(sources, source)
+	}
+	for _, source := range strings.Split(entry.Properties["skillSources"], ",") {
+		source = strings.TrimSpace(source)
+		if source == "" {
+			continue
+		}
+		sources = append(sources, source)
+	}
+	return sources
+}
+
+func skillSourceSlug(source string) string {
+	replacer := strings.NewReplacer("https://", "", "http://", "", "github.com/", "", "/", "-", ".", "-", "_", "-")
+	return replacer.Replace(source)
+}
+
+func mergeEnvWriteActions(actions []core.ExecutionAction) []core.ExecutionAction {
+	merged := make([]core.ExecutionAction, 0, len(actions))
+	envIndexes := make(map[string]int)
+	for _, action := range actions {
+		if action.Kind != core.ActionKindWriteEnv {
+			merged = append(merged, action)
+			continue
+		}
+
+		if index, ok := envIndexes[action.Path]; ok {
+			merged[index].Content = mergeEnvContent(merged[index].Content, action.Content)
+			continue
+		}
+
+		envIndexes[action.Path] = len(merged)
+		merged = append(merged, action)
+	}
+	return merged
+}
+
+func mergeEnvContent(existing string, next string) string {
+	lines := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, content := range []string{existing, next} {
+		for _, line := range strings.Split(content, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if _, ok := seen[line]; ok {
+				continue
+			}
+			seen[line] = struct{}{}
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func renderAction(action core.ExecutionAction) string {
@@ -135,6 +259,10 @@ func renderAction(action core.ExecutionAction) string {
 			return fmt.Sprintf("(cd %s && %s)", action.Dir, command)
 		}
 		return command
+	case core.ActionKindWriteFile:
+		return fmt.Sprintf("write file %s", action.Path)
+	case core.ActionKindWriteEnv:
+		return fmt.Sprintf("write env file %s", action.Path)
 	default:
 		return string(action.Kind)
 	}

@@ -30,25 +30,35 @@ type EntryDefinition struct {
 type Registry struct {
 	groups         []GroupDefinition
 	groupByID      map[core.ChoiceGroupID]GroupDefinition
-	entriesByID    map[string]EntryDefinition
+	entriesByID    map[core.ChoiceGroupID]map[string]EntryDefinition
 	entriesByGroup map[core.ChoiceGroupID][]EntryDefinition
 }
 
 func New() Registry {
 	r := Registry{
 		groupByID:      make(map[core.ChoiceGroupID]GroupDefinition),
-		entriesByID:    make(map[string]EntryDefinition),
+		entriesByID:    make(map[core.ChoiceGroupID]map[string]EntryDefinition),
 		entriesByGroup: make(map[core.ChoiceGroupID][]EntryDefinition),
 	}
 
 	registerGroups(&r)
 	registerNextFrontend(&r)
+	registerExpoFrontend(&r)
+	registerTanStackStartFrontend(&r)
 	registerBackendExpress(&r)
+	registerBackendHono(&r)
+	registerBackendHonoCloudflareWorkers(&r)
+	registerBackendNext(&r)
 	registerBackendGo(&r)
 	registerDatabases(&r)
 	registerORMs(&r)
 	registerPackageManagers(&r)
+	registerCodeQuality(&r)
 	registerAuthAddons(&r)
+	registerEmailAddons(&r)
+	registerCloudflareAddons(&r)
+	registerStorageAddons(&r)
+	registerFinalization(&r)
 
 	return r
 }
@@ -59,7 +69,10 @@ func (r *Registry) RegisterGroup(group GroupDefinition) {
 }
 
 func (r *Registry) RegisterEntry(entry EntryDefinition) {
-	r.entriesByID[entry.ID] = entry
+	if r.entriesByID[entry.Group] == nil {
+		r.entriesByID[entry.Group] = make(map[string]EntryDefinition)
+	}
+	r.entriesByID[entry.Group][entry.ID] = entry
 	r.entriesByGroup[entry.Group] = append(r.entriesByGroup[entry.Group], entry)
 }
 
@@ -71,8 +84,8 @@ func (r Registry) EntriesForGroup(groupID core.ChoiceGroupID) []EntryDefinition 
 	return append([]EntryDefinition(nil), r.entriesByGroup[groupID]...)
 }
 
-func (r Registry) Entry(entryID string) (EntryDefinition, bool) {
-	entry, ok := r.entriesByID[entryID]
+func (r Registry) Entry(groupID core.ChoiceGroupID, entryID string) (EntryDefinition, bool) {
+	entry, ok := r.entriesByID[groupID][entryID]
 	return entry, ok
 }
 
@@ -81,7 +94,7 @@ func (r Registry) SelectedEntries(selection core.TemplateSelection) ([]EntryDefi
 	for _, group := range r.groups {
 		if group.Multi {
 			for _, entryID := range selection.Multi(group.ID) {
-				entry, ok := r.Entry(entryID)
+				entry, ok := r.Entry(group.ID, entryID)
 				if !ok {
 					return nil, fmt.Errorf("unknown entry %q", entryID)
 				}
@@ -94,7 +107,7 @@ func (r Registry) SelectedEntries(selection core.TemplateSelection) ([]EntryDefi
 		if entryID == "" {
 			continue
 		}
-		entry, ok := r.Entry(entryID)
+		entry, ok := r.Entry(group.ID, entryID)
 		if !ok {
 			return nil, fmt.Errorf("unknown entry %q", entryID)
 		}

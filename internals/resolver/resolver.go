@@ -98,7 +98,7 @@ func (s Service) validatePartial(selection core.TemplateSelection) error {
 		if group.Multi {
 			for _, value := range selection.Multi(group.ID) {
 				if !containsChoice(choices, value) {
-					return fmt.Errorf("addon %q is not valid for the current selection", value)
+					return fmt.Errorf("%s %q is not valid for the current selection", core.ChoiceGroupLabel(group.ID), value)
 				}
 			}
 			continue

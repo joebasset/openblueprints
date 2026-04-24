@@ -26,4 +26,28 @@ func registerPackageManagers(r *Registry) {
 		},
 		Properties: map[string]string{"kind": "option"},
 	})
+	r.RegisterEntry(EntryDefinition{
+		ID:    "yarn",
+		Name:  "Yarn",
+		Group: core.GroupPackageManager,
+		Provides: []core.Capability{
+			"pm:yarn",
+		},
+		RequiresAll: []core.Capability{
+			"package-manager:js",
+		},
+		Properties: map[string]string{"kind": "option"},
+	})
+	r.RegisterEntry(EntryDefinition{
+		ID:    "bun",
+		Name:  "Bun",
+		Group: core.GroupPackageManager,
+		Provides: []core.Capability{
+			"pm:bun",
+		},
+		RequiresAll: []core.Capability{
+			"package-manager:js",
+		},
+		Properties: map[string]string{"kind": "option"},
+	})
 }

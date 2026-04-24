@@ -14,16 +14,22 @@ const (
 	GroupDatabase       ChoiceGroupID = "database"
 	GroupORM            ChoiceGroupID = "orm"
 	GroupPackageManager ChoiceGroupID = "packageManager"
+	GroupCodeQuality    ChoiceGroupID = "codeQuality"
 	GroupAddon          ChoiceGroupID = "addon"
+	GroupStorage        ChoiceGroupID = "storage"
+	GroupFinalization   ChoiceGroupID = "finalization"
 )
 
 var OrderedChoiceGroups = []ChoiceGroupID{
 	GroupFrontend,
 	GroupBackend,
 	GroupDatabase,
+	GroupStorage,
 	GroupORM,
 	GroupPackageManager,
+	GroupCodeQuality,
 	GroupAddon,
+	GroupFinalization,
 }
 
 var choiceGroupLabels = map[ChoiceGroupID]string{
@@ -32,7 +38,10 @@ var choiceGroupLabels = map[ChoiceGroupID]string{
 	GroupDatabase:       "database",
 	GroupORM:            "orm",
 	GroupPackageManager: "package manager",
+	GroupCodeQuality:    "linting / formatter",
 	GroupAddon:          "addons",
+	GroupStorage:        "storage",
+	GroupFinalization:   "finalization",
 }
 
 type Capability string
@@ -136,7 +145,7 @@ func (s TemplateSelection) IsTouched(groupID ChoiceGroupID) bool {
 }
 
 func (s TemplateSelection) HasSelection(groupID ChoiceGroupID) bool {
-	if groupID == GroupAddon {
+	if groupID == GroupAddon || groupID == GroupStorage || groupID == GroupFinalization {
 		return s.IsTouched(groupID)
 	}
 	return s.Single(groupID) != ""
@@ -146,7 +155,7 @@ func (s TemplateSelection) SummaryLines() []string {
 	lines := []string{fmt.Sprintf("project: %s", s.ProjectName)}
 	for _, groupID := range OrderedChoiceGroups {
 		label := choiceGroupLabels[groupID]
-		if groupID == GroupAddon {
+		if groupID == GroupAddon || groupID == GroupStorage || groupID == GroupFinalization {
 			values := s.Multi(groupID)
 			if len(values) > 0 {
 				lines = append(lines, fmt.Sprintf("%s: %s", label, strings.Join(values, ", ")))
@@ -172,9 +181,11 @@ func ChoiceGroupLabel(groupID ChoiceGroupID) string {
 type ActionKind string
 
 const (
-	ActionKindMkdir   ActionKind = "mkdir"
-	ActionKindCommand ActionKind = "command"
-	ActionKindNote    ActionKind = "note"
+	ActionKindMkdir     ActionKind = "mkdir"
+	ActionKindCommand   ActionKind = "command"
+	ActionKindNote      ActionKind = "note"
+	ActionKindWriteFile ActionKind = "write-file"
+	ActionKindWriteEnv  ActionKind = "write-env"
 )
 
 type PlanPhase string
@@ -204,6 +215,7 @@ type ExecutionAction struct {
 	Path        string
 	Command     string
 	Args        []string
+	Content     string
 }
 
 type PlanFragment struct {

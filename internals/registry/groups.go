@@ -24,11 +24,18 @@ func registerGroups(r *Registry) {
 		ActivationCaps: []core.Capability{"backend:selected"},
 	})
 	r.RegisterGroup(GroupDefinition{
+		ID:             core.GroupStorage,
+		Title:          "Storage",
+		Description:    "Choose optional object storage integrations.",
+		Multi:          true,
+		ActivationCaps: []core.Capability{"backend:selected"},
+	})
+	r.RegisterGroup(GroupDefinition{
 		ID:             core.GroupORM,
 		Title:          "ORM / data layer",
 		Description:    "Choose the data access layer for the selected backend and database.",
 		Required:       true,
-		ActivationCaps: []core.Capability{"backend:express"},
+		ActivationCaps: []core.Capability{"backend:js", "database:orm-supported"},
 	})
 	r.RegisterGroup(GroupDefinition{
 		ID:             core.GroupPackageManager,
@@ -38,9 +45,22 @@ func registerGroups(r *Registry) {
 		ActivationCaps: []core.Capability{"runtime:js"},
 	})
 	r.RegisterGroup(GroupDefinition{
+		ID:             core.GroupCodeQuality,
+		Title:          "Linting / formatter",
+		Description:    "Choose the code quality toolchain for JavaScript workspaces.",
+		Required:       true,
+		ActivationCaps: []core.Capability{"runtime:js"},
+	})
+	r.RegisterGroup(GroupDefinition{
 		ID:          core.GroupAddon,
 		Title:       "Addons",
 		Description: "Choose optional integrations supported by the resolved stack.",
+		Multi:       true,
+	})
+	r.RegisterGroup(GroupDefinition{
+		ID:          core.GroupFinalization,
+		Title:       "Finalization",
+		Description: "Choose optional finishing steps to run after scaffolding.",
 		Multi:       true,
 	})
 }
